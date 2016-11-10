@@ -127,6 +127,7 @@ void setup() {
   pinMode(GPIO0, INPUT_PULLUP);  // GPIO0 as input for Config mode selection
 
   pinMode(SWITCHpin, OUTPUT);
+  pinMode(D4, OUTPUT);
   readConfig();
   WiFi.disconnect();
   WiFi.softAPdisconnect(true);
@@ -185,6 +186,7 @@ void loop() {
     if (request.indexOf("/SWITCH=ON") != -1) {
       delayCount = 0;    // last time an "ON" was received
       Serial.println("ON received ");
+      digitalWrite(D4,ON);
     }
     if (request.indexOf("/SWITCH=OFF") != -1) {
       delayCount = -1;
@@ -226,6 +228,7 @@ void loop() {
       digitalWrite(SWITCHpin, ON);
       delayCount++;     // count delayCount higher
       delay(100);
+      digitalWrite(D4,OFF);
     }
   }
 }

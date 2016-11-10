@@ -181,9 +181,6 @@ void configESP() {
   Serial.println("");
   Serial.println("");
   readConfig();
-  Serial.println("");
-  Serial.println("connected");
-  switchSonoff(ON);  // make light for work :-)
   delay(500);   // wait for debounce of switch
   entry = millis();
 
@@ -191,6 +188,7 @@ void configESP() {
     delay(100);
     yield();    // wait till GPIOo released
   }
+  Serial.println("Start Server");
   serverSetup();
   config.magicBytes[0] = 'C';
   config.magicBytes[1] = 'F';

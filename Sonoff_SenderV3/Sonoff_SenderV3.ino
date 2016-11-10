@@ -26,7 +26,7 @@
 */
 
 
-#define VERSION "V3.1"
+#define VERSION "V3.2"
 #define SKETCH "SonoffSender "
 #define FIRMWARE SKETCH VERSION
 
@@ -62,12 +62,13 @@ ESP8266WebServer webServer(80);
 #define MAXRETRIES 50
 #define DELAYPIR 10   // seconds till switch off
 
-enum LEDstatusDef {
+enum statusDef {
   LEDon,
+  Renew,
   LEDoff
 };
 
-LEDstatusDef LEDstatus = LEDoff;
+statusDef loopStatus;
 
 // Tell it where to store your config data in EEPROM
 #define CONFIG_START 0
@@ -127,6 +128,8 @@ HTTPClient http;
 void espRestart(char mmode) {
   while (digitalRead(GPIO0) == OFF) yield();    // wait till GPIOo released
   delay(500);
+  Serial.print("Restart ");
+  Serial.println(mmode);
   system_rtc_mem_write(RTCMEMBEGIN + 100, &mmode, 1);
   ESP.restart();
 }
@@ -140,6 +143,8 @@ bool switchSonoff(bool command) {
   String address5(config.constant5);
   String address6(config.constant6);
   if (command == ON) {
+    Serial.print(millis() / 1000);
+    Serial.print(" ");
     if (address5.length() > 0) {
       Serial.println("http://" + address5 + "/SWITCH=ON");
       http.begin("http://" + address5 + "/SWITCH=ON");
@@ -176,7 +181,7 @@ bool switchSonoff(bool command) {
       if (httpCode == HTTP_CODE_OK) {
         payload = http.getString();
         ok = true;
-        if (payload.indexOf("On") > 0) ret = true;
+        ret = true;
         yield();
       }
     } else Serial.printf("[HTTP] GET... failed, error: %s\n", http.errorToString(httpCode).c_str());
@@ -200,9 +205,11 @@ void setup() {
   Serial.println("Start "FIRMWARE);
 
   system_rtc_mem_read(RTCMEMBEGIN + 100, &progMode, 1);
+  Serial.print("progMode ");
+  Serial.println(progMode);
   if (progMode == 'S') configESP();
 
-  pinMode(PIRpin, INPUT_PULLUP);
+  pinMode(PIRpin, INPUT);
   pinMode(GPIO0, INPUT_PULLUP);  // GPIO0 as input for Config mode selection
   pinMode(LEDpin, OUTPUT);
   digitalWrite(LEDpin, ON);    // inverse logic
@@ -227,41 +234,43 @@ void setup() {
     iotUpdater(config.IOTappStore2, config.IOTappStorePHP2, FIRMWARE, true, true);
   }
   switchSonoff(OFF);
-  LEDstatus = LEDoff;
+  loopStatus = LEDoff;
   ESP.wdtEnable(WDTO_8S);
-
 }
 
 void loop() {
   ESP.wdtFeed();
   yield();
   bool PIRstatus = digitalRead(PIRpin);
+  digitalWrite(LEDpin, !PIRstatus);
   if (digitalRead(GPIO0) == OFF) espRestart('S');
 
-  switch (LEDstatus) {
+  switch (loopStatus) {
     case LEDon:
-      digitalWrite(LEDpin, OFF);  // inverse logic
-      if ( abs(millis() - onEntry) > 10000) {
-        while (!switchSonoff(ON));
-        onEntry = millis();
-      }
-
-      // exit criteria
+      // exit
       if (PIRstatus == OFF) {
         Serial.print("Status: ");
         Serial.println("OFF");
-        LEDstatus = LEDoff;
+        loopStatus = LEDoff;
       }
+      else if (abs(millis() - onEntry) > 10000) loopStatus = Renew;
+      break;
+
+    case Renew:
+      while (!switchSonoff(ON));
+      onEntry = millis();
+      // exit
+      loopStatus = LEDon;
       break;
 
     case LEDoff:
-      digitalWrite(LEDpin, ON);    // inverse logic
 
-      // exit criteria
+      // exit
       if (PIRstatus == ON) {
         Serial.print("Status: ");
         Serial.println("ON");
-        LEDstatus = LEDon;
+        while (!switchSonoff(ON));
+        loopStatus = LEDon;
       }
       break;
 
