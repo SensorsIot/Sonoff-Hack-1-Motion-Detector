@@ -4,57 +4,37 @@
 
 typedef struct {
   byte markerFlag;
-  int updateSpaces;
-  int runSpaces;
-  long lastSubscribers;
+  int bootTimes;
 } 
 rtcMemDef __attribute__((aligned(4)));
 
 rtcMemDef rtcMem = {
   MAGICBYTE,
-  9999,
-  9999,
   0
 };
 
-void handleTelnet() {
-  if (TelnetServer.hasClient()) {
-    // client is connected
-    if (!Telnet || !Telnet.connected()) {
-      if (Telnet) Telnet.stop();         // client disconnected
-      Telnet = TelnetServer.available(); // ready for new client
-    } else {
-      TelnetServer.available().stop();  // have client, block new conections
-    }
-  }
+void espRestart(char mmode) {
+  while (digitalRead(GPIO0) == OFF) yield();    // wait till GPIOo released
+  delay(500);
+  system_rtc_mem_write(RTCMEMBEGIN + 100, &mmode, 1);
+  ESP.restart();
 }
 
 void printRTCmem() {
-  DEBUGPRINTLN2("");
-  DEBUGPRINTLN2("rtcMem ");
-  DEBUGPRINT2("markerFlag ");
-  DEBUGPRINTLN2(rtcMem.markerFlag);
-  DEBUGPRINT2("runSpaces ");
-  DEBUGPRINTLN2(rtcMem.runSpaces);
-  DEBUGPRINT2("updateSpaces ");
-  DEBUGPRINTLN2(rtcMem.updateSpaces);
-  DEBUGPRINT2("lastSubscribers ");
-  DEBUGPRINTLN2(rtcMem.lastSubscribers);
+  Serial.print("BootTimes ");
+  Serial.println(rtcMem.bootTimes);
 }
 
 
 bool readRTCmem() {
   bool ret = true;
   system_rtc_mem_read(RTCMEMBEGIN, &rtcMem, sizeof(rtcMem));
-  if (rtcMem.markerFlag != MAGICBYTE || rtcMem.lastSubscribers < 0 ) {
+  if (rtcMem.markerFlag != MAGICBYTE ) {
     rtcMem.markerFlag = MAGICBYTE;
-    rtcMem.lastSubscribers = 0;
-    rtcMem.updateSpaces = 0;
-    rtcMem.runSpaces = 0;
+    rtcMem.bootTimes = 0;
     system_rtc_mem_write(RTCMEMBEGIN, &rtcMem, sizeof(rtcMem));
     ret = false;
   }
-  printRTCmem();
   return ret;
 }
 
@@ -77,30 +57,30 @@ bool iotUpdater(String server, String url, String firmware, bool immediately, bo
 
   if (debugWiFi) {
     getMACaddress();
-    DEBUGPRINT1("IP = ");
-    DEBUGPRINTLN1(WiFi.localIP());
-    DEBUGPRINT1("Update_server ");
-    DEBUGPRINTLN1(server);
-    DEBUGPRINT1("UPDATE_URL ");
-    DEBUGPRINTLN1(url);
-    DEBUGPRINT1("FIRMWARE_VERSION ");
-    DEBUGPRINTLN1(firmware);
-    DEBUGPRINTLN1("Updating...");
+    Serial.print("IP = ");
+    Serial.println(WiFi.localIP());
+    Serial.print("Update_server ");
+    Serial.println(server);
+    Serial.print("UPDATE_URL ");
+    Serial.println(url);
+    Serial.print("FIRMWARE_VERSION ");
+    Serial.println(firmware);
+    Serial.println("Updating...");
   }
   t_httpUpdate_return ret = ESPhttpUpdate.update(server, 80, url, firmware);
   switch (ret) {
     case HTTP_UPDATE_FAILED:
       retValue = false;
       if (debugWiFi) Serial.printf("HTTP_UPDATE_FAILD Error (%d): %s", ESPhttpUpdate.getLastError(), ESPhttpUpdate.getLastErrorString().c_str());
-      DEBUGPRINTLN1();
+      Serial.println();
       break;
 
     case HTTP_UPDATE_NO_UPDATES:
-      if (debugWiFi) DEBUGPRINTLN1("HTTP_UPDATE_NO_UPDATES");
+      if (debugWiFi) Serial.println("HTTP_UPDATE_NO_UPDATES");
       break;
 
     case HTTP_UPDATE_OK:
-      if (debugWiFi) DEBUGPRINTLN1("HTTP_UPDATE_OK");
+      if (debugWiFi) Serial.println("HTTP_UPDATE_OK");
       break;
   }
   return retValue;

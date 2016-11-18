@@ -11,6 +11,7 @@ const char PAGE_AdminMainPage[] PROGMEM = R"=====(
 <a href="config.html" style="width:250px" class="btn btn--m btn--blue" >Network Configuration</a><br>
 <a href="info.html"   style="width:250px"  class="btn btn--m btn--blue" >Network Information</a><br>
 <a href="appl.html"   style="width:250px"  class="btn btn--m btn--blue" >Application Settings</a><br>
+<a href="exit.html"   style="width:250px"  class="btn btn--m btn--blue" >Exit</a><br>
 
 
 <script>
@@ -29,5 +30,4 @@ function load(e,t,n){if("js"==t){var a=document.createElement("script");a.src=e,
 </script>
 
 )=====";
-
 

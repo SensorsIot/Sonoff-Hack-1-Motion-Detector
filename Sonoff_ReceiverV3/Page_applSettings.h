@@ -11,7 +11,7 @@ Connect to Router with these settings:<br>
 <table border="0"  cellspacing="0" cellpadding="3" style="width:650px" >
 <tr><td align="right">Constant1:</td><td><input type="text" style="width:350px"   id="constant1" name="constant1" value=""></td></tr>
 <tr><td align="right">Constant2:</td><td><input type="text" style="width:350px"   id="constant2" name="constant2" value=""></td></tr>
-<tr><td align="right">Constant3:</td><td><input type="text" style="width:350px"   id="constant3" name="constant3" value=""></td></tr>
+<tr><td align="right">Board Name:</td><td><input type="text" style="width:350px"   id="constant3" name="constant3" value=""></td></tr>
 <tr><td align="right">Constant4:</td><td><input type="text" style="width:350px"   id="constant4" name="constant4" value=""></td></tr>
 <tr><td align="right">Constant5:</td><td><input type="text" style="width:350px"   id="constant5" name="constant5" value=""></td></tr>
 <tr><td align="right">Constant6:</td><td><input type="text" style="width:350px"   id="constant6" name="constant6" value=""></td></tr>

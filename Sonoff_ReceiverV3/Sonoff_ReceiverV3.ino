@@ -24,11 +24,11 @@
   OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
   SOFTWARE.
 
-  Version 1.0
+  Version 3.0
 
 */
 
-#define VERSION "V3.1"
+#define VERSION "V3.4"
 #define FIRMWARE "SonoffReceiver "VERSION
 
 #include <credentials.h>
@@ -36,17 +36,21 @@
 #include <EEPROM.h>
 #include <ESP8266httpUpdate.h>
 #include <ESP8266WebServer.h>
-//#include <ESP8266mDNS.h>
-#define DEBUG 3
-#include <DebugUtils.h>
+#include <ESP8266mDNS.h>
+#include "RemoteDebug.h"        //https://github.com/JoaoLopesF/RemoteDebug
+
+#define EEPROM_SIZE 1024
 
 #define SWITCHpin 12
 #define DELAYSEC 7*60   // 7 minutes
 #define ON true
 #define OFF false
 #define GPIO0 0
-
 #define RTCMEMBEGIN 68
+
+#define REMOTEDEBUG
+
+#define SERVICENAME   "SONOFF" // name of the MDNS service used in this group of ESPs
 
 extern "C" {
 #include "user_interface.h" // this is for the RTC memory read/write functions
@@ -55,6 +59,12 @@ extern "C" {
 WiFiServer server(80);
 ESP8266WebServer webServer(80);
 
+// remoteDebug
+#ifdef REMOTEDEBUG
+RemoteDebug Debug;
+uint32_t mLastTime = 0;
+uint32_t mTimeSeconds = 0;
+#endif
 
 typedef struct {
   char ssid[20];
@@ -63,12 +73,12 @@ typedef struct {
   byte  Netmask[4];
   byte  Gateway[4];
   boolean dhcp;
-  char constant1[30];
-  char constant2[30];
-  char constant3[30];
-  char constant4[30];
-  char constant5[30];
-  char constant6[30];
+  char constant1[50];
+  char constant2[50];
+  char constant3[50];
+  char constant4[50];
+  char constant5[50];
+  char constant6[50];
   char IOTappStore1[40];
   char IOTappStorePHP1[40];
   char IOTappStore2[40];
@@ -83,12 +93,12 @@ strConfig config = {
   255, 255, 255, 0,
   192, 168, 0, 1,
   true,
-  "cred1",
-  "cred2",
-  "cred3",
-  "cred4",
-  "cred5",
-  "cred6",
+  "constant1",
+  "constant2",
+  "constant3",
+  "constant4",
+  "constant5",
+  "constant6",
   "192.168.0.200",
   "/iotappstore/iotappstorev20.php",
   "iotappstore.org",
@@ -96,22 +106,13 @@ strConfig config = {
   "CFG"
 };
 
-// declare telnet server
-WiFiServer TelnetServer(23);
-WiFiClient Telnet;
 
 long delayCount = -1;
 String ssid, password;
 String constant1, constant2, constant3, constant4, constant5, constant6, IOTappStore1, IOTappStorePHP1, IOTappStore2, IOTappStorePHP2;
 
-void espRestart(char mmode) {
-  while (digitalRead(GPIO0) == OFF) yield();    // wait till GPIOo released
-  delay(500);
-  system_rtc_mem_write(RTCMEMBEGIN + 100, &mmode, 1);
-  ESP.restart();
-}
-
-#include "SaveConfig.h"
+#include "ESPConfig.h"
+#include "Sparkfun.h"
 
 //-------------------------------------------------------------------
 
@@ -119,22 +120,28 @@ void setup() {
   char progMode;
 
   Serial.begin(115200);
-  system_rtc_mem_read(RTCMEMBEGIN + 100, &progMode, 1);
+  system_rtc_mem_read(RTCMEMBEGIN + 100, &progMode, 1);   // Read the "progMode" flag RTC memory to decide, if to go to config
   if (progMode == 'S') configESP();
 
   for (int i = 0; i < 5; i++) Serial.println("");
   Serial.println("Start "FIRMWARE);
   pinMode(GPIO0, INPUT_PULLUP);  // GPIO0 as input for Config mode selection
-
   pinMode(SWITCHpin, OUTPUT);
-  pinMode(D4, OUTPUT);
-  readConfig();
+  // pinMode(3, OUTPUT);
+
+  // read and increase boot statistics (optional)
+  readRTCmem();
+  rtcMem.bootTimes++;
+  writeRTCmem();
+  printRTCmem();
+
+  readConfig();  // configuration in EEPROM
+
+  // connect to Wi-Fi
   WiFi.disconnect();
   WiFi.softAPdisconnect(true);
   WiFi.mode(WIFI_STA);
-
   WiFi.begin(config.ssid, config.password);
-
   int retries = 0;
   while (WiFi.status() != WL_CONNECTED) {
     delay(500);
@@ -145,18 +152,40 @@ void setup() {
   }
   Serial.println("");
   Serial.println("connected");
+
+  // update from IOTappstory.com
   if (iotUpdater(config.IOTappStore1, config.IOTappStorePHP1, FIRMWARE, false, true) == 0) {
     iotUpdater(config.IOTappStore2, config.IOTappStorePHP2, FIRMWARE, true, true);
   }
+
+  // Register host name in WiFi and mDNS
+  String hostNameWifi = config.constant3;   // constant3 is device name
+  hostNameWifi.concat(".local");
+  WiFi.hostname(hostNameWifi);
+  if (MDNS.begin(config.constant3)) {
+    Serial.print("* MDNS responder started. http://");
+    Serial.print(config.constant3);
+    Serial.println(".local");
+     MDNS.addService("SERVICENAME", "tcp", 8080);
+  }
+
   server.begin();
   Serial.println("Server started");
-  //  setupMDNS();
 
   // Print the IP address
   Serial.print("Use this URL to connect: ");
   Serial.print("http://");
   Serial.print(WiFi.localIP());
   Serial.println("/");
+
+
+#ifdef REMOTEDEBUG
+  remoteDebugSetup();
+  Debug.println(config.constant3);
+#endif
+
+  sendSparkfun(); // send boot statistics to sparkfun
+
   ESP.wdtEnable(WDTO_8S);
 }
 
@@ -164,8 +193,13 @@ void setup() {
 
 void loop() {
   ESP.wdtFeed();
-  if (digitalRead(GPIO0) == OFF) espRestart('S');
 
+#ifdef REMOTEDEBUG
+  Debug.handle();
+#endif
+
+  yield();
+  if (digitalRead(GPIO0) == OFF) espRestart('S');
   if (WiFi.status() != WL_CONNECTED) espRestart('H');
 
   WiFiClient client = server.available();
@@ -186,15 +220,24 @@ void loop() {
     if (request.indexOf("/SWITCH=ON") != -1) {
       delayCount = 0;    // last time an "ON" was received
       Serial.println("ON received ");
-      digitalWrite(D4,ON);
+#ifdef REMOTEDEBUG
+      if (Debug.ative(Debug.DEBUG)) Debug.println("ON received ");
+#endif
+      //   digitalWrite(3,ON);
     }
     if (request.indexOf("/SWITCH=OFF") != -1) {
       delayCount = -1;
       digitalWrite(SWITCHpin, OFF);
       Serial.println("OFF received ");
+#ifdef REMOTEDEBUG
+      if (Debug.ative(Debug.DEBUG)) Debug.println("OFF received ");
+#endif
     }
     if (request.indexOf("/STATUS") != -1) {
       Serial.println("Status request ");
+#ifdef REMOTEDEBUG
+      if (Debug.ative(Debug.DEBUG)) Debug.println("STATUS request received ");
+#endif
     }
     // Return the response
     client.println("HTTP/1.1 200 OK");
@@ -209,6 +252,8 @@ void loop() {
       client.print(delayCount / 10);
       client.print(" sec");
     }
+    client.print(" Booard Name ");
+    client.print(config.constant3);
     client.println("<br><br>");
     client.println("Click <a href=\"/SWITCH=ON\">here</a> turn the SWITCH on pin 12 ON<br>");
     client.println("Click <a href=\"/SWITCH=OFF\">here</a> turn the SWITCH on pin 12 OFF<br>");
@@ -228,25 +273,21 @@ void loop() {
       digitalWrite(SWITCHpin, ON);
       delayCount++;     // count delayCount higher
       delay(100);
-      digitalWrite(D4,OFF);
+      //     digitalWrite(3,OFF);
     }
   }
 }
 
-/*
+#ifdef REMOTEDEBUG
+void remoteDebugSetup() {
+  MDNS.addService("telnet", "tcp", 23);
+  // Initialize the telnet server of RemoteDebug
+  Debug.begin(config.constant3); // Initiaze the telnet server
+  Debug.setResetCmdEnabled(true); // Enable the reset command
+  // Debug.showProfiler(true); // To show profiler - time between messages of Debug
+  // Good to "begin ...." and "end ...." messages
+  // This sample (serial -> educattional use only, not need in production)
 
-  /*void setupMDNS()
-  {
-  // Call MDNS.begin(<domain>) to set up mDNS to point to
-  // "<domain>.local"
-  if (!MDNS.begin("SonoffLED"))
-  {
-    Serial.println("Error setting up MDNS responder!");
-    while (1) {
-      delay(1000);
-    }
-  }
-  Serial.println("mDNS responder started");
-
-  }
-*/
+  // Debug.showTime(true); // To show time
+}
+#endif

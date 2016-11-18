@@ -73,6 +73,15 @@ Please Wait....Configuring.
 //  SEND HTML PAGE OR IF A FORM SUMBITTED VALUES, PROCESS THESE VALUES
 // 
 
+
+
+void send_exit_html(){
+  espRestart('H');
+}
+
+
+
+
 void send_network_configuration_html()
 {
 	
